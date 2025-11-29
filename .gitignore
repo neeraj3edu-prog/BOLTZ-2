@@ -164,3 +164,12 @@ cython_debug/
 # Boltz prediction outputs
 #   All result files generated from a boltz prediction call
 boltz_results_*/
+
+# API specific
+api/boltz_api_env/
+api/api_jobs/
+api/.boltz/
+*.log
+
+# API Documentation (contains deployment-specific info)
+docs/api/

@@ -1,0 +1,10 @@
+# API dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+python-multipart==0.0.6
+pyyaml==6.0.1
+aiofiles==23.2.1
+
+# Boltz - install from parent directory
+-e ..
