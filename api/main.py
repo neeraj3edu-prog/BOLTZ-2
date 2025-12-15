@@ -45,6 +45,45 @@ jobs_db: Dict[str, Dict] = {}
 # This allows reusing predictions for the same ligand
 prediction_cache: Dict[str, List[str]] = {}
 
+# ==================== Protein Target Configurations ====================
+
+# GLP1R (Glucagon-like peptide-1 receptor)
+GLP1R_SEQUENCE = "MAGAPGLLRLALLLLGMVGRAGPRPQGATVSLWETVQKWREYRRQCQRSLTEDPPPATDLFCNRTFDEYACWPDGEPGSFVNVSCPWYLPWASSVPQGHVYRFCTAEGLWLQKDNSSLPWRDLSECEESKRGERSSPEEQLLFLYIIYTVGYALSFSALVIASAILLGFRHLHCTRNYIHLNLFASFILRALSVFIKDAALKWMYSTAAQQHQWDGLLSYQDSLSCRLVFLLMQYCVAANYYWLLVEGVYLYTLLAFSVLSEQWIFRLYVSIGWGVPLLFVVPWGIVKYLYEDEGCWTRNSNMNYWLIIRLPILFAIGVNFLIFVRVICIVVSKLKANLMCKTDIKCRLAKSTLTLIPLLGTHEVIFAFVMDEHARGTLRFIKLFTELSFTSFQGLMVAILYCFVNNEVQLEFRKSWERWRLEHLHIQRDSSMKPLKCPTSSLSSGATAGSSMYTATCQASCS"
+GLP1R_ECD_RANGES = list(range(24, 140)) + list(range(202, 228)) + list(range(291, 306)) + list(range(371, 384))
+GLP1R_TM_RANGES = list(range(140, 161)) + list(range(176, 202)) + list(range(228, 252)) + list(range(266, 291)) + list(range(306, 329)) + list(range(349, 371)) + list(range(384, 405))
+GLP1R_BINDING_POCKET = GLP1R_ECD_RANGES + GLP1R_TM_RANGES
+
+# GIPR (Glucose-dependent insulinotropic polypeptide receptor)
+GIPR_SEQUENCE = "MTTSPILQLLLRLSLCGLLLQRAETGSKGQTAGELYQRWERYRRECQETLAAAEPPSGLACNGSFDMYVCWDYAAPNATARASCPWYLPWHHHVAAGFVLRQCGSDGQWGLWRDHTQCENPEKNEAFLDQRLILERLQVMYTVGYSLSLATLLLALLILSLFRRLHCTRNYIHINLFTSFMLRAAAILSRDRLLPRPGPYLGDQALALWNQALAACRTAQIVTQYCVGANYTWLLVEGVYLHSLLVLVGGSEEGHFRYYLLLGWGAPALFVIPWVIVRYLYENTQCWERNEVKAIWWIIRTPILMTILINFLIFIRILGILLSKLRTRQMRCRDYRLRLARSTLTLVPLLGVHEVVFAPVTEEQARGALRFAKLGFEIFLSSFQGFLVSVLYCFINKEVQSEIRRGWHHCRLRRSLGEEQRQLPERAFRALPSGSGPGEVPTSRGLSSGTLPGPGNEASRELESYC"
+GIPR_ECD_RANGES = list(range(22, 139)) + list(range(190, 218)) + list(range(279, 294)) + list(range(363, 378))
+GIPR_TM_RANGES = list(range(139, 162)) + list(range(170, 190)) + list(range(218, 243)) + list(range(255, 279)) + list(range(294, 320)) + list(range(342, 363)) + list(range(379, 399))
+GIPR_BINDING_POCKET = GIPR_ECD_RANGES + GIPR_TM_RANGES
+
+# GCGR (Glucagon receptor)
+GCGR_SEQUENCE = "MPPCQPQRPLLLLLLLLACQPQVPSAQVMDFLFEKWKLYGDQCHHNLSLLPPPTELVCNRTFDKYSCWPDTPANTTANISCPWYLPWHHKVQHRFVFKRCGPDGQWVRGPRGQPWRDASQCQMDGEEIEVQKEVAKMYSSFQVMYTVGYSLSLGALLLALAILGGLSKLHCTRNAIHANLFASFVLKASSVLVIDGLLRTRYSQKIGDDLSVSTWLSDGAVAGCRVAAVFMQYGIVANYCWLLVEGLYLHNLLGLATLPERSFFSLYLGIGWGAPMLFVVPWAVVKCLFENVQCWTSNDNMGFWWILRFPVFLAILINFFIFVRIVQLLVAKLRARQMHHTDYKFRLAKSTLTLIPLLGVHEVVFAFVTDEHAQGTLRSAKLFFDLFLSSFQGLLVAVLYCFLNKEVQSELRRRWHRWRLGKVLWEERNTSNHRASSSPGHGPPSKELQFGRGGGSQDSSAETPLAGGLPRLAESPF"
+GCGR_ECD_RANGES = list(range(26, 137)) + list(range(199, 226)) + list(range(286, 305)) + list(range(370, 382))
+GCGR_TM_RANGES = list(range(137, 162)) + list(range(174, 199)) + list(range(226, 250)) + list(range(264, 286)) + list(range(304, 327)) + list(range(351, 370)) + list(range(382, 403))
+GCGR_BINDING_POCKET = GCGR_ECD_RANGES + GCGR_TM_RANGES
+
+# Protein target configurations
+PROTEIN_TARGETS = {
+    "GLP1R": {
+        "sequence": GLP1R_SEQUENCE,
+        "binding_pocket": GLP1R_BINDING_POCKET,
+        "name": "GLP-1 Receptor"
+    },
+    "GIPR": {
+        "sequence": GIPR_SEQUENCE,
+        "binding_pocket": GIPR_BINDING_POCKET,
+        "name": "GIP Receptor"
+    },
+    "GCGR": {
+        "sequence": GCGR_SEQUENCE,
+        "binding_pocket": GCGR_BINDING_POCKET,
+        "name": "Glucagon Receptor"
+    }
+}
+
 
 # ==================== Helper Functions ====================
 
@@ -131,6 +170,27 @@ def restore_jobs_from_disk():
             created_at = datetime.fromtimestamp(job_dir.stat().st_ctime).isoformat()
             modified_at = datetime.fromtimestamp(job_dir.stat().st_mtime).isoformat()
             
+            # Try to extract job_name from input.yaml or use job_id as fallback
+            job_name = None
+            yaml_path = job_dir / "input.yaml"
+            if yaml_path.exists():
+                try:
+                    with open(yaml_path, 'r') as f:
+                        input_data = yaml.safe_load(f)
+                        # Try to infer job name from protein sequence or use job_id
+                        for seq in input_data.get('sequences', []):
+                            if 'protein' in seq:
+                                # Use first few chars of protein ID if available
+                                protein_id = seq['protein'].get('id', '')
+                                if protein_id:
+                                    job_name = f"{protein_id}-{job_id.split('_')[1][:8]}"
+                                    break
+                except:
+                    pass
+            
+            if not job_name:
+                job_name = job_id  # Fallback to job_id
+            
             # Restore job metadata
             jobs_db[job_id] = {
                 "status": "completed" if predictions else "unknown",
@@ -143,6 +203,7 @@ def restore_jobs_from_disk():
                 "metrics": metrics,  # Store extracted metrics
                 "error": None,
                 "stdout": "",
+                "job_name": job_name,  # Add job_name field
             }
             restored_count += 1
         
@@ -340,14 +401,6 @@ class ProteinLigandBindingResult(BaseModel):
     message: str = Field(..., description="Status message")
 
 
-class ProteinLigandBindingCompleteResult(BaseModel):
-    """Complete protein-ligand binding prediction result with all metrics."""
-    
-    ligand_smiles: str = Field(..., description="SMILES string of the ligand")
-    results: List[Dict] = Field(..., description="Results for each replicate job")
-    summary: Dict = Field(..., description="Summary statistics across replicates")
-
-
 # ==================== Helper Functions ====================
 
 
@@ -524,8 +577,11 @@ async def run_boltz_prediction(job_id: str, request: PredictionRequest) -> None:
             if devices is None:
                 devices = detected_devices
         
-        # Create input YAML
-        yaml_path = create_yaml_input(job_dir, request)
+        # Check if input YAML already exists (e.g., created by protein-ligand-binding-sync with template)
+        yaml_path = job_dir / "input.yaml"
+        if not yaml_path.exists():
+            # Create input YAML if it doesn't exist
+            yaml_path = create_yaml_input(job_dir, request)
         
         # Build Boltz command
         cmd = [
@@ -534,6 +590,8 @@ async def run_boltz_prediction(job_id: str, request: PredictionRequest) -> None:
             str(yaml_path),
             "--out_dir",
             str(job_dir / "output"),
+            "--cache",
+            "/root/.boltz",  # Explicitly set cache directory
         ]
         
         if request.use_msa_server:
@@ -695,102 +753,6 @@ async def cache_status():
     }
 
 
-@app.post("/predict", response_model=JobStatus, tags=["Prediction"])
-async def create_prediction(
-    request: PredictionRequest,
-    background_tasks: BackgroundTasks,
-):
-    """
-    Submit a structure prediction job.
-    
-    Returns a job ID that can be used to check status and retrieve results.
-    """
-    # Generate job ID
-    job_id = generate_job_id()
-    job_dir = get_job_dir(job_id)
-    job_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Initialize job in database
-    jobs_db[job_id] = {
-        "job_id": job_id,
-        "status": "pending",
-        "created_at": datetime.now().isoformat(),
-        "request": request.model_dump(),
-    }
-    
-    # Schedule prediction in background
-    background_tasks.add_task(run_boltz_prediction, job_id, request)
-    
-    return JobStatus(
-        job_id=job_id,
-        status="pending",
-        created_at=jobs_db[job_id]["created_at"],
-    )
-
-
-@app.post("/predict/yaml", response_model=JobStatus, tags=["Prediction"])
-async def create_prediction_from_yaml(
-    background_tasks: BackgroundTasks,
-    yaml_file: UploadFile = File(..., description="YAML input file"),
-    use_msa_server: bool = Form(True),
-    use_potentials: bool = Form(False),
-    recycling_steps: int = Form(3),
-    sampling_steps: int = Form(200),
-    diffusion_samples: int = Form(1),
-    output_format: str = Form("mmcif"),
-    devices: int = Form(1),
-    accelerator: str = Form("gpu"),
-):
-    """
-    Submit a prediction job using a YAML file upload.
-    """
-    # Generate job ID
-    job_id = generate_job_id()
-    job_dir = get_job_dir(job_id)
-    job_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Save uploaded YAML file
-    yaml_path = job_dir / "input.yaml"
-    with open(yaml_path, "wb") as f:
-        content = await yaml_file.read()
-        f.write(content)
-    
-    # Parse YAML to get sequences
-    with open(yaml_path, "r") as f:
-        yaml_data = yaml.safe_load(f)
-    
-    # Create request object
-    request = PredictionRequest(
-        sequences=yaml_data.get("sequences", []),
-        properties=yaml_data.get("properties"),
-        use_msa_server=use_msa_server,
-        use_potentials=use_potentials,
-        recycling_steps=recycling_steps,
-        sampling_steps=sampling_steps,
-        diffusion_samples=diffusion_samples,
-        output_format=output_format,
-        devices=devices,
-        accelerator=accelerator,
-    )
-    
-    # Initialize job in database
-    jobs_db[job_id] = {
-        "job_id": job_id,
-        "status": "pending",
-        "created_at": datetime.now().isoformat(),
-        "request": request.model_dump(),
-    }
-    
-    # Schedule prediction in background
-    background_tasks.add_task(run_boltz_prediction, job_id, request)
-    
-    return JobStatus(
-        job_id=job_id,
-        status="pending",
-        created_at=jobs_db[job_id]["created_at"],
-    )
-
-
 @app.get("/jobs/{job_id}/status", response_model=JobStatus, tags=["Jobs"])
 async def get_job_status(job_id: str):
     """
@@ -812,105 +774,6 @@ async def get_job_status(job_id: str):
         completed_at=job_data.get("completed_at"),
         error=job_data.get("error"),
     )
-
-
-@app.get("/jobs/{job_id}/result", response_model=JobResult, tags=["Jobs"])
-async def get_job_result(job_id: str):
-    """
-    Get the results of a completed prediction job.
-    """
-    if job_id not in jobs_db:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found",
-        )
-    
-    job_data = jobs_db[job_id]
-    
-    if job_data["status"] not in ["completed", "failed"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Job {job_id} is still {job_data['status']}",
-        )
-    
-    # Use extracted metrics if available, otherwise load from files
-    metrics = job_data.get("metrics", {})
-    
-    # If metrics weren't extracted (old jobs), extract them now
-    if not metrics and job_data.get("confidence_files") or job_data.get("affinity_files"):
-        metrics = extract_metrics_from_files(
-            job_data.get("confidence_files", []),
-            job_data.get("affinity_files", []),
-            get_job_dir(job_id)
-        )
-    
-    # Separate confidence and affinity metrics for backward compatibility
-    confidence_scores = {
-        k: v for k, v in metrics.items() 
-        if k in ["confidence_score", "ptm", "iptm", "plddt"]
-    } if metrics else None
-    
-    affinity_scores = {
-        k: v for k, v in metrics.items() 
-        if k in ["boltz_affinity_value", "affinity_prob", "ic50_nM", "ic50_uM", 
-                 "pic50", "delta_g_kcal", "kd_nM", "kd_uM", "pkd"]
-    } if metrics else None
-    
-    return JobResult(
-        job_id=job_id,
-        status=job_data["status"],
-        predictions=job_data.get("predictions"),
-        confidence_scores=confidence_scores,
-        affinity_scores=affinity_scores,
-        output_files=job_data.get("predictions", [])
-        + job_data.get("confidence_files", [])
-        + job_data.get("affinity_files", []),
-    )
-
-
-@app.get("/gpu/status", tags=["System"])
-async def gpu_status():
-    """
-    Get current GPU memory status.
-    """
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=index,name,memory.used,memory.free,memory.total,utilization.gpu', 
-             '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, check=True
-        )
-        
-        gpus = []
-        for line in result.stdout.strip().split('\n'):
-            if line:
-                parts = [p.strip() for p in line.split(',')]
-                if len(parts) >= 6:
-                    gpus.append({
-                        "index": int(parts[0]),
-                        "name": parts[1],
-                        "memory_used_mb": int(parts[2]),
-                        "memory_free_mb": int(parts[3]),
-                        "memory_total_mb": int(parts[4]),
-                        "memory_used_gb": round(int(parts[2]) / 1024, 2),
-                        "memory_free_gb": round(int(parts[3]) / 1024, 2),
-                        "memory_total_gb": round(int(parts[4]) / 1024, 2),
-                        "utilization_percent": int(parts[5]),
-                        "memory_usage_percent": round((int(parts[2]) / int(parts[4])) * 100, 1)
-                    })
-        
-        return {
-            "gpus": gpus,
-            "gpu_available": len(gpus) > 0,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {
-            "gpus": [],
-            "gpu_available": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
 
 
 @app.get("/jobs/{job_id}/download/{file_path:path}", tags=["Jobs"])
@@ -989,21 +852,6 @@ async def delete_job(job_id: str):
     return {"message": f"Job {job_id} deleted successfully"}
 
 
-@app.post("/admin/cleanup", tags=["Admin"])
-async def cleanup_jobs():
-    """
-    Clean up old completed/failed jobs.
-    """
-    initial_count = len(jobs_db)
-    cleanup_old_jobs()
-    removed_count = initial_count - len(jobs_db)
-    
-    return {
-        "message": f"Cleaned up {removed_count} old jobs",
-        "remaining_jobs": len(jobs_db),
-    }
-
-
 @app.get("/jobs/{job_id}/download/{file_path:path}", tags=["Jobs"])
 async def download_job_file(job_id: str, file_path: str):
     """
@@ -1071,158 +919,20 @@ async def download_job_file(job_id: str, file_path: str):
     )
 
 
-@app.post("/admin/rescan", tags=["Admin"])
-async def rescan_jobs():
-    """
-    Re-scan all job directories and update metadata.
-    Useful if jobs completed with old code or files were added manually.
-    """
-    # Clear existing jobs_db to force full rescan
-    jobs_db.clear()
-    
-    # Re-scan all jobs from disk
-    restore_jobs_from_disk()
-    
-    return {
-        "message": "Re-scanned all jobs from disk",
-        "total_jobs": len(jobs_db),
-    }
-
-
-@app.post("/protein-ligand-binding", response_model=ProteinLigandBindingResult, tags=["Protein-Ligand"])
-async def predict_protein_ligand_binding(
-    request: ProteinLigandBindingRequest,
-    background_tasks: BackgroundTasks,
-):
-    """
-    Predict protein-ligand binding for GLP1R with three replicate predictions.
-    
-    This endpoint runs three predictions with the same configuration but different job names:
-    - GLP1R-LIGAND83
-    - GLP1R-LIGAND94  
-    - GLP1R-LIGAND172
-    
-    Each uses the hardcoded GLP1R sequence and binding pocket with the provided ligand.
-    The three jobs are replicates to ensure consistency and reliability of predictions.
-    """
-    # Hardcoded GLP1R configuration
-    GLP1R_sequence = "MAGAPGLLRLALLLLGMVGRAGPRPQGATVSLWETVQKWREYRRQCQRSLTEDPPPATDLFCNRTFDEYACWPDGEPGSFVNVSCPWYLPWASSVPQGHVYRFCTAEGLWLQKDNSSLPWRDLSECEESKRGERSSPEEQLLFLYIIYTVGYALSFSALVIASAILLGFRHLHCTRNYIHLNLFASFILRALSVFIKDAALKWMYSTAAQQHQWDGLLSYQDSLSCRLVFLLMQYCVAANYYWLLVEGVYLYTLLAFSVLSEQWIFRLYVSIGWGVPLLFVVPWGIVKYLYEDEGCWTRNSNMNYWLIIRLPILFAIGVNFLIFVRVICIVVSKLKANLMCKTDIKCRLAKSTLTLIPLLGTHEVIFAFVMDEHARGTLRFIKLFTELSFTSFQGLMVAILYCFVNNEVQLEFRKSWERWRLEHLHIQRDSSMKPLKCPTSSLSSGATAGSSMYTATCQASCS"
-    
-    # GLP1R binding pocket residues
-    GLP1R_ecd_ranges = list(range(24, 140)) + list(range(202, 228)) + list(range(291, 306)) + list(range(371, 384))
-    GLP1R_tm_ranges = list(range(140, 161)) + list(range(176, 202)) + list(range(228, 252)) + list(range(266, 291)) + list(range(306, 329)) + list(range(349, 371)) + list(range(384, 405))
-    GLP1R_binding_pocket = GLP1R_ecd_ranges + GLP1R_tm_ranges
-    
-    # Default template path (can be overridden by request)
-    default_template_path = "/app/templates/ligand_free_processed.cif"
-    template_path = request.template_path or default_template_path
-    
-    # Job names to create (three replicates)
-    job_names = ["GLP1R-LIGAND83", "GLP1R-LIGAND94", "GLP1R-LIGAND172"]
-    job_ids = []
-    
-    # Create three jobs with the same configuration
-    for job_name in job_names:
-        # Generate job ID
-        job_id = generate_job_id()
-        job_dir = get_job_dir(job_id)
-        job_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Prepare contacts for binding pocket
-        contacts = [["A", i] for i in GLP1R_binding_pocket]
-        
-        # Build input data
-        input_data = {
-            "version": 1,
-            "sequences": [
-                {
-                    "protein": {
-                        "id": "A",
-                        "sequence": GLP1R_sequence
-                    }
-                },
-                {
-                    "ligand": {
-                        "id": "C",
-                        "smiles": request.ligand_smiles
-                    }
-                }
-            ],
-            "constraints": [
-                {
-                    "pocket": {
-                        "binder": "C",
-                        "contacts": contacts
-                    }
-                }
-            ],
-            "properties": [
-                {
-                    "affinity": {
-                        "binder": "C",
-                        "target": "A"
-                    }
-                }
-            ]
-        }
-        
-        # Add template if provided
-        if template_path:
-            input_data["template"] = {
-                "complex_cif": template_path
-            }
-        
-        # Create PredictionRequest
-        pred_request = PredictionRequest(
-            sequences=input_data["sequences"],
-            properties=input_data.get("properties"),
-            use_msa_server=request.use_msa_server,
-            recycling_steps=request.recycling_steps,
-            sampling_steps=request.sampling_steps,
-            diffusion_samples=request.diffusion_samples,
-            output_format="mmcif",
-        )
-        
-        # Store job metadata
-        jobs_db[job_id] = {
-            "status": "pending",
-            "created_at": datetime.now().isoformat(),
-            "started_at": None,
-            "completed_at": None,
-            "predictions": [],
-            "confidence_files": [],
-            "affinity_files": [],
-            "error": None,
-            "job_name": job_name,
-        }
-        
-        # Save input YAML with constraints
-        yaml_path = job_dir / "input.yaml"
-        with open(yaml_path, "w") as f:
-            yaml.dump(input_data, f, default_flow_style=False)
-        
-        # Start prediction in background
-        background_tasks.add_task(run_boltz_prediction, job_id, pred_request)
-        
-        job_ids.append(job_id)
-    
-    return ProteinLigandBindingResult(
-        job_ids=job_ids,
-        ligand_smiles=request.ligand_smiles,
-        status="submitted",
-        message=f"Successfully submitted {len(job_ids)} protein-ligand binding predictions"
-    )
-
-
-@app.post("/protein-ligand-binding-sync", response_model=ProteinLigandBindingCompleteResult, tags=["Protein-Ligand"])
+@app.post("/protein-ligand-binding-sync", tags=["Protein-Ligand"])
 async def predict_protein_ligand_binding_sync(
     request: ProteinLigandBindingRequest,
 ):
     """
-    Predict protein-ligand binding for GLP1R and return complete results (synchronous).
+    Predict protein-ligand binding for ALL THREE receptors (GLP1R, GIPR, GCGR) and return complete results (synchronous).
     
-    This endpoint runs three predictions and waits for all to complete before returning.
-    With GPU acceleration, this typically takes 45-90 minutes for all three jobs.
+    This endpoint runs 3 predictions total (1 per receptor) and waits for all to complete before returning.
+    With GPU acceleration, this typically takes 6-9 minutes for all three predictions.
+    
+    For the input SMILES (ligand), it predicts binding to:
+    - GLP1R (Glucagon-like peptide-1 receptor)
+    - GIPR (Glucose-dependent insulinotropic polypeptide receptor)
+    - GCGR (Glucagon receptor)
     
     Returns complete metrics including:
     - boltz_affinity_value, affinity_prob
@@ -1232,19 +942,21 @@ async def predict_protein_ligand_binding_sync(
     - confidence_score, ptm, iptm, plddt
     - Structure files (CIF)
     
-    The response includes individual results for each replicate plus summary statistics.
+    The response includes individual results for each receptor.
     """
-    # Hardcoded GLP1R configuration
-    GLP1R_sequence = "MAGAPGLLRLALLLLGMVGRAGPRPQGATVSLWETVQKWREYRRQCQRSLTEDPPPATDLFCNRTFDEYACWPDGEPGSFVNVSCPWYLPWASSVPQGHVYRFCTAEGLWLQKDNSSLPWRDLSECEESKRGERSSPEEQLLFLYIIYTVGYALSFSALVIASAILLGFRHLHCTRNYIHLNLFASFILRALSVFIKDAALKWMYSTAAQQHQWDGLLSYQDSLSCRLVFLLMQYCVAANYYWLLVEGVYLYTLLAFSVLSEQWIFRLYVSIGWGVPLLFVVPWGIVKYLYEDEGCWTRNSNMNYWLIIRLPILFAIGVNFLIFVRVICIVVSKLKANLMCKTDIKCRLAKSTLTLIPLLGTHEVIFAFVMDEHARGTLRFIKLFTELSFTSFQGLMVAILYCFVNNEVQLEFRKSWERWRLEHLHIQRDSSMKPLKCPTSSLSSGATAGSSMYTATCQASCS"
+    # Receptor-specific template paths (relative to api directory)
+    TEMPLATE_BASE_PATH = "/app/template_path"
+    RECEPTOR_TEMPLATES = {
+        "GLP1R": f"{TEMPLATE_BASE_PATH}/GLP.cif",
+        "GIPR": f"{TEMPLATE_BASE_PATH}/GIP.cif",
+        "GCGR": f"{TEMPLATE_BASE_PATH}/GCGR.cif"
+    }
     
-    # GLP1R binding pocket residues
-    GLP1R_ecd_ranges = list(range(24, 140)) + list(range(202, 228)) + list(range(291, 306)) + list(range(371, 384))
-    GLP1R_tm_ranges = list(range(140, 161)) + list(range(176, 202)) + list(range(228, 252)) + list(range(266, 291)) + list(range(306, 329)) + list(range(349, 371)) + list(range(384, 405))
-    GLP1R_binding_pocket = GLP1R_ecd_ranges + GLP1R_tm_ranges
-    
-    # Default template path
-    default_template_path = "/app/templates/ligand_free_processed.cif"
-    template_path = request.template_path or default_template_path
+    # Hardcoded prediction parameters (simplified API)
+    use_msa_server = True
+    recycling_steps = 3
+    sampling_steps = 200
+    diffusion_samples = 1
     
     # Check cache first
     cached_job_ids = check_prediction_cache(request.ligand_smiles)
@@ -1254,131 +966,152 @@ async def predict_protein_ligand_binding_sync(
         print(f"✓ Cache hit for ligand SMILES: {request.ligand_smiles[:50]}...")
         job_ids = cached_job_ids
     else:
-        # Cache miss - run new predictions
-        print(f"Cache miss for ligand SMILES: {request.ligand_smiles[:50]}... Running predictions...")
+        # Cache miss - run new predictions for ALL THREE receptors
+        print(f"Cache miss for ligand SMILES: {request.ligand_smiles[:50]}... Running predictions for GLP1R, GIPR, GCGR...")
         
-        # Job names to create (three replicates)
-        job_names = ["GLP1R-LIGAND83", "GLP1R-LIGAND94", "GLP1R-LIGAND172"]
         job_ids = []
         
-        # Create three jobs and run them synchronously
-        for job_name in job_names:
-            # Generate job ID
-            job_id = generate_job_id()
-            job_dir = get_job_dir(job_id)
-            job_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Prepare contacts for binding pocket
-            contacts = [["A", i] for i in GLP1R_binding_pocket]
-            
-            # Build input data
-            input_data = {
-                "version": 1,
-                "sequences": [
-                    {
-                        "protein": {
-                            "id": "A",
-                            "sequence": GLP1R_sequence
-                        }
-                    },
-                    {
-                        "ligand": {
-                            "id": "C",
-                            "smiles": request.ligand_smiles
-                        }
-                    }
-                ],
-                "constraints": [
-                    {
-                        "pocket": {
-                            "binder": "C",
-                            "contacts": contacts
-                        }
-                    }
-                ],
-                "properties": [
-                    {
-                        "affinity": {
-                            "binder": "C",
-                            "target": "A"
-                        }
-                    }
-                ]
+        # Define receptor configurations (one prediction per receptor)
+        receptors = [
+            {
+                "name": "GLP1R",
+                "sequence": GLP1R_SEQUENCE,
+                "binding_pocket": GLP1R_BINDING_POCKET,
+            },
+            {
+                "name": "GIPR",
+                "sequence": GIPR_SEQUENCE,
+                "binding_pocket": GIPR_BINDING_POCKET,
+            },
+            {
+                "name": "GCGR",
+                "sequence": GCGR_SEQUENCE,
+                "binding_pocket": GCGR_BINDING_POCKET,
             }
+        ]
+        
+        # Run one prediction per receptor
+        for receptor in receptors:
+            print(f"Running prediction for {receptor['name']}...")
             
-            # Add template if provided
-            if template_path:
-                input_data["template"] = {
-                    "complex_cif": template_path
+            # Generate job name for this receptor
+            job_name = f"{receptor['name']}-LIGAND"
+            
+            # Single prediction per receptor (not multiple replicates)
+            if True:  # Keep indentation consistent
+                # Generate job ID
+                job_id = generate_job_id()
+                job_dir = get_job_dir(job_id)
+                job_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Prepare contacts for binding pocket
+                contacts = [["A", i] for i in receptor["binding_pocket"]]
+                
+                # Build input data
+                input_data = {
+                    "version": 1,
+                    "sequences": [
+                        {
+                            "protein": {
+                                "id": "A",
+                                "sequence": receptor["sequence"]
+                            }
+                        },
+                        {
+                            "ligand": {
+                                "id": "C",
+                                "smiles": request.ligand_smiles
+                            }
+                        }
+                    ],
+                    "constraints": [
+                        {
+                            "pocket": {
+                                "binder": "C",
+                                "contacts": contacts
+                            }
+                        }
+                    ],
+                    "properties": [
+                        {
+                            "affinity": {
+                                "binder": "C",
+                                "target": "A"
+                            }
+                        }
+                    ]
                 }
-            
-            # Create PredictionRequest
-            pred_request = PredictionRequest(
-                sequences=input_data["sequences"],
-                properties=input_data.get("properties"),
-                use_msa_server=request.use_msa_server,
-                recycling_steps=request.recycling_steps,
-                sampling_steps=request.sampling_steps,
-                diffusion_samples=request.diffusion_samples,
-                output_format="mmcif",
-            )
-            
-            # Store job metadata
-            jobs_db[job_id] = {
-                "status": "pending",
-                "created_at": datetime.now().isoformat(),
-                "started_at": None,
-                "completed_at": None,
-                "predictions": [],
-                "confidence_files": [],
-                "affinity_files": [],
-                "error": None,
-                "job_name": job_name,
-            }
-            
-            # Save input YAML with constraints
-            yaml_path = job_dir / "input.yaml"
-            with open(yaml_path, "w") as f:
-                yaml.dump(input_data, f, default_flow_style=False)
-            
-            # Run prediction synchronously (wait for completion)
-            await run_boltz_prediction(job_id, pred_request)
-            
-            job_ids.append(job_id)
+                
+                # Add receptor-specific template
+                receptor_template = RECEPTOR_TEMPLATES.get(receptor["name"])
+                if receptor_template:
+                    input_data["template"] = {
+                        "complex_cif": receptor_template
+                    }
+                    print(f"Using template: {receptor_template} for {receptor['name']}")
+                
+                # Create PredictionRequest with hardcoded parameters
+                pred_request = PredictionRequest(
+                    sequences=input_data["sequences"],
+                    properties=input_data.get("properties"),
+                    use_msa_server=use_msa_server,
+                    recycling_steps=recycling_steps,
+                    sampling_steps=sampling_steps,
+                    diffusion_samples=diffusion_samples,
+                    output_format="mmcif",
+                )
+                
+                # Store job metadata
+                jobs_db[job_id] = {
+                    "status": "pending",
+                    "created_at": datetime.now().isoformat(),
+                    "started_at": None,
+                    "completed_at": None,
+                    "predictions": [],
+                    "confidence_files": [],
+                    "affinity_files": [],
+                    "error": None,
+                    "job_name": job_name,
+                    "receptor": receptor["name"],  # Track which receptor this is for
+                }
+                
+                # Save input YAML with constraints
+                yaml_path = job_dir / "input.yaml"
+                with open(yaml_path, "w") as f:
+                    yaml.dump(input_data, f, default_flow_style=False)
+                
+                # Run prediction synchronously (wait for completion)
+                await run_boltz_prediction(job_id, pred_request)
+                
+                job_ids.append(job_id)
         
         # Add to cache after all predictions complete
         add_to_prediction_cache(request.ligand_smiles, job_ids)
     
-    # Collect results from all three jobs
-    results = []
-    ic50_values = []
-    confidence_values = []
+    # Collect results grouped by receptor
+    results_by_receptor = {"GLP1R": [], "GIPR": [], "GCGR": []}
     
     for job_id in job_ids:
         job_data = jobs_db[job_id]
+        receptor_name = job_data.get("receptor", "GLP1R")  # Default to GLP1R for backward compatibility
         
         if job_data["status"] == "completed":
             metrics = job_data.get("metrics", {})
-            
-            # Extract key values for summary
-            if "ic50_nM" in metrics:
-                ic50_values.append(metrics["ic50_nM"])
-            if "confidence_score" in metrics:
-                confidence_values.append(metrics["confidence_score"])
             
             # Build result for this job
             result = {
                 "job_id": job_id,
                 "job_name": job_data.get("job_name"),
+                "receptor": receptor_name,
                 "status": "completed",
                 "confidence_scores": {
                     k: v for k, v in metrics.items() 
-                    if k in ["confidence_score", "ptm", "iptm", "plddt"]
+                    if k in ["confidence_score", "ptm", "iptm", "plddt", "complex_plddt", "complex_pde"]
                 },
                 "affinity_scores": {
                     k: v for k, v in metrics.items() 
                     if k in ["boltz_affinity_value", "affinity_prob", "ic50_nM", "ic50_uM", 
-                             "pic50", "delta_g_kcal", "kd_nM", "kd_uM", "pkd"]
+                             "pic50", "delta_g_kcal", "kd_nM", "kd_uM", "pkd", "binding_classification"]
                 },
                 "structure_files": job_data.get("predictions", [])
             }
@@ -1387,56 +1120,84 @@ async def predict_protein_ligand_binding_sync(
             result = {
                 "job_id": job_id,
                 "job_name": job_data.get("job_name"),
+                "receptor": receptor_name,
                 "status": job_data["status"],
                 "error": job_data.get("error")
             }
         
-        results.append(result)
+        if receptor_name in results_by_receptor:
+            results_by_receptor[receptor_name].append(result)
     
-    # Calculate summary statistics
-    summary = {}
-    if ic50_values:
-        mean_ic50 = sum(ic50_values) / len(ic50_values)
-        variance = sum((x - mean_ic50) ** 2 for x in ic50_values) / len(ic50_values)
-        std_ic50 = variance ** 0.5
-        cv_ic50 = (std_ic50 / mean_ic50 * 100) if mean_ic50 > 0 else 0
+    # Extract summary for each receptor (single prediction per receptor)
+    summary_by_receptor = {}
+    
+    for receptor_name, receptor_results in results_by_receptor.items():
+        receptor_summary = {}
         
-        summary["ic50_nM"] = {
-            "mean": mean_ic50,
-            "std": std_ic50,
-            "cv_percent": cv_ic50,
-            "values": ic50_values
-        }
-    
-    if confidence_values:
-        mean_conf = sum(confidence_values) / len(confidence_values)
-        summary["confidence_score"] = {
-            "mean": mean_conf,
-            "values": confidence_values
-        }
-    
-    # Add quality assessment
-    if ic50_values:
-        summary["consistency"] = "good" if cv_ic50 < 20 else "variable"
-        
-        # Classify binding strength
-        mean_ic50 = summary["ic50_nM"]["mean"]
-        if mean_ic50 < 10:
-            summary["binding_classification"] = "Very Strong"
-        elif mean_ic50 < 100:
-            summary["binding_classification"] = "Strong"
-        elif mean_ic50 < 1000:
-            summary["binding_classification"] = "Moderate"
-        elif mean_ic50 < 10000:
-            summary["binding_classification"] = "Weak"
+        # Since we only have 1 prediction per receptor, just extract the values directly
+        if receptor_results and receptor_results[0]["status"] == "completed":
+            result = receptor_results[0]
+            affinity = result.get("affinity_scores", {})
+            confidence = result.get("confidence_scores", {})
+            
+            # Extract affinity metrics
+            if "ic50_nM" in affinity:
+                receptor_summary["ic50_nM"] = affinity["ic50_nM"]
+                receptor_summary["ic50_uM"] = affinity.get("ic50_uM")
+                receptor_summary["pic50"] = affinity.get("pic50")
+                
+                # Classify binding strength based on IC50
+                ic50 = affinity["ic50_nM"]
+                if ic50 < 10:
+                    receptor_summary["binding_classification"] = "Very Strong Binder"
+                elif ic50 < 100:
+                    receptor_summary["binding_classification"] = "Strong Binder"
+                elif ic50 < 1000:
+                    receptor_summary["binding_classification"] = "Moderate Binder"
+                elif ic50 < 10000:
+                    receptor_summary["binding_classification"] = "Weak Binder"
+                else:
+                    receptor_summary["binding_classification"] = "Very Weak Binder"
+            
+            if "kd_nM" in affinity:
+                receptor_summary["kd_nM"] = affinity["kd_nM"]
+                receptor_summary["kd_uM"] = affinity.get("kd_uM")
+                receptor_summary["pkd"] = affinity.get("pkd")
+            
+            if "delta_g_kcal" in affinity:
+                receptor_summary["delta_g_kcal"] = affinity["delta_g_kcal"]
+            
+            if "boltz_affinity_value" in affinity:
+                receptor_summary["boltz_affinity_value"] = affinity["boltz_affinity_value"]
+                receptor_summary["affinity_prob"] = affinity.get("affinity_probability_binary")
+            
+            # Extract confidence metrics
+            if "confidence_score" in confidence:
+                receptor_summary["confidence_score"] = confidence["confidence_score"]
+            if "ptm" in confidence:
+                receptor_summary["ptm"] = confidence["ptm"]
+            if "iptm" in confidence:
+                receptor_summary["iptm"] = confidence["iptm"]
+            if "plddt" in confidence:
+                receptor_summary["plddt"] = confidence["plddt"]
+            
+            receptor_summary["status"] = "completed"
         else:
-            summary["binding_classification"] = "Very Weak"
+            receptor_summary["status"] = "failed" if receptor_results else "no_data"
+            if receptor_results and receptor_results[0].get("error"):
+                receptor_summary["error"] = receptor_results[0]["error"]
+        
+        summary_by_receptor[receptor_name] = receptor_summary
     
-    return ProteinLigandBindingCompleteResult(
-        ligand_smiles=request.ligand_smiles,
-        results=results,
-        summary=summary
-    )
+    return {
+        "ligand_smiles": request.ligand_smiles,
+        "total_jobs": len(job_ids),
+        "results_by_receptor": results_by_receptor,
+        "summary_by_receptor": summary_by_receptor
+    }
+
+
+
 
 
 # ==================== Main Entry Point ====================

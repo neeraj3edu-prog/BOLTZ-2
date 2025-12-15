@@ -27,8 +27,34 @@ RUN pip3 install boltz[cuda] -U
 # Install additional API dependencies
 RUN pip3 install fastapi uvicorn pydantic python-multipart pyyaml aiofiles
 
+# Create Boltz cache directory
+RUN mkdir -p /root/.boltz/ccd
+
+# Download CCD (Chemical Component Dictionary) files required by Boltz
+RUN cd /root/.boltz/ccd && \
+    wget -q https://files.rcsb.org/pub/pdb/data/monomers/components.cif.gz && \
+    gunzip components.cif.gz && \
+    echo "CCD files downloaded successfully"
+
+# Set Boltz cache directory
+ENV BOLTZ_CACHE=/root/.boltz
+
 # Copy API code
-COPY api/main.py /app/main.py
+COPY main.py /app/main.py
+
+# Copy receptor-specific templates
+COPY template_path /app/template_path
+
+# Create startup script to download models if needed
+RUN echo '#!/bin/bash\n\
+echo "Checking Boltz model files..."\n\
+if [ ! -f "/root/.boltz/boltz1.ckpt" ]; then\n\
+  echo "Downloading Boltz model files (this may take a few minutes on first start)..."\n\
+  python3 -c "from pathlib import Path; from boltz.main import download_boltz2; download_boltz2(Path(\"/root/.boltz\"))" || echo "Model download failed, will retry on first prediction"\n\
+fi\n\
+echo "Starting API server..."\n\
+exec uvicorn main:app --host 0.0.0.0 --port 8000\n\
+' > /app/start.sh && chmod +x /app/start.sh
 
 # Create directories
 RUN mkdir -p /app/.boltz /app/api_jobs
@@ -37,8 +63,8 @@ RUN mkdir -p /app/.boltz /app/api_jobs
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run API
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run startup script
+CMD ["/app/start.sh"]
